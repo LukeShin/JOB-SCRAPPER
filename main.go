@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/PuerkitoBio/goquery"
 )
@@ -21,13 +22,26 @@ type extractedJob struct {
 var baseURL string = "https://kr.indeed.com/%EC%B7%A8%EC%97%85?q=python"
 
 func main() {
+	var jobs []extractedJob
 	totalPages := getPages()
 	for i := 0; i < totalPages; i++ {
-		getPage(i)
+		extractedJobs := getPage(i)
+		jobs = append(jobs, extractedJobs...)
+	}
+
+	for idx, curJob := range jobs {
+
+		fmt.Println("[", idx, "]", "id:", curJob.id)
+		fmt.Println("title:", curJob.title)
+		fmt.Println("company:", curJob.company)
+		fmt.Println("location:", curJob.location)
+		fmt.Println("salary:", curJob.salary)
+		fmt.Println("summary:", curJob.summary+"\n")
 	}
 }
 
-func getPage(page int) {
+func getPage(page int) []extractedJob {
+	var jobs []extractedJob
 	pageURL := baseURL + "&start=" + strconv.Itoa(page*10)
 	fmt.Println("Requesting", pageURL)
 	res, err := http.Get(pageURL)
@@ -40,18 +54,31 @@ func getPage(page int) {
 
 	searchCards := doc.Find(".tapItem")
 	searchCards.Each(func(i int, card *goquery.Selection) {
-		id, _ := card.Attr("data-jk")
-
-		title := card.Find(".jobTitle>span").Text()
-		company := card.Find(".companyName").Text()
-		location := card.Find(".companyLocation").Text()
-		summary := card.Find(".job-snippet").Text()
-		fmt.Println("id:", id)
-		fmt.Println("title:", title)
-		fmt.Println("company:", company)
-		fmt.Println("location:", location)
-		fmt.Println("summary:", summary+"\n")
+		job := extractJob(card)
+		jobs = append(jobs, job)
 	})
+	return jobs
+}
+
+func extractJob(card *goquery.Selection) extractedJob {
+	id, _ := card.Attr("data-jk")
+	title := cleanString(card.Find(".jobTitle>span").Text())
+	company := cleanString(card.Find(".companyName").Text())
+	location := cleanString(card.Find(".companyLocation").Text())
+	salary := cleanString(card.Find(".salary-snippet").Text())
+	summary := cleanString(card.Find(".job-snippet").Text())
+	return extractedJob{
+		id:       id,
+		title:    title,
+		company:  company,
+		location: location,
+		salary:   salary,
+		summary:  summary,
+	}
+}
+
+func cleanString(str string) string {
+	return strings.Join(strings.Fields(strings.TrimSpace(str)), " ")
 }
 
 func getPages() int {
