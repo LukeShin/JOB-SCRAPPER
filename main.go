@@ -26,14 +26,85 @@ var viewURL string = "https://kr.indeed.com/%EC%B1%84%EC%9A%A9%EB%B3%B4%EA%B8%B0
 
 func main() {
 	var jobs []extractedJob
+	c := make(chan []extractedJob)
 	totalPages := getPages()
+
 	for i := 0; i < totalPages; i++ {
-		extractedJobs := getPage(i)
+		go getPage(i, c)
+	}
+
+	for i := 0; i < totalPages; i++ {
+		extractedJobs := <-c
 		jobs = append(jobs, extractedJobs...)
 	}
+
 	wirteJobs(jobs)
 	logJobs(jobs)
 	fmt.Println("Done, extracted", len(jobs))
+}
+
+func getPage(page int, mainC chan<- []extractedJob) {
+	var jobs []extractedJob
+	c := make(chan extractedJob)
+	pageURL := baseURL + "&start=" + strconv.Itoa(page*10)
+	fmt.Println("Requesting", pageURL)
+	res, err := http.Get(pageURL)
+	checkErr(err)
+	checkCode(res)
+
+	defer res.Body.Close()
+
+	doc, err := goquery.NewDocumentFromReader(res.Body)
+
+	searchCards := doc.Find(".tapItem")
+	searchCards.Each(func(i int, card *goquery.Selection) {
+		go extractJob(card, c)
+	})
+
+	for i := 0; i < searchCards.Length(); i++ {
+		job := <-c
+		jobs = append(jobs, job)
+	}
+	mainC <- jobs
+}
+
+func extractJob(card *goquery.Selection, c chan<- extractedJob) {
+	id, _ := card.Attr("data-jk")
+	title := cleanString(card.Find(".jobTitle>span").Text())
+	company := cleanString(card.Find(".companyName").Text())
+	location := cleanString(card.Find(".companyLocation").Text())
+	salary := cleanString(card.Find(".salary-snippet").Text())
+	summary := cleanString(card.Find(".job-snippet").Text())
+	c <- extractedJob{
+		id:       id,
+		title:    title,
+		company:  company,
+		location: location,
+		salary:   salary,
+		summary:  summary,
+	}
+}
+
+func cleanString(str string) string {
+	return strings.Join(strings.Fields(strings.TrimSpace(str)), " ")
+}
+
+func getPages() int {
+	pages := 0
+	res, err := http.Get(baseURL)
+	checkErr(err)
+	checkCode(res)
+
+	defer res.Body.Close()
+
+	doc, err := goquery.NewDocumentFromReader(res.Body)
+	checkCode(res)
+
+	doc.Find(".pagination").Each(func(i int, s *goquery.Selection) {
+		pages = s.Find("a").Length()
+	})
+
+	return pages
 }
 
 func wirteJobs(jobs []extractedJob) {
@@ -64,65 +135,6 @@ func logJobs(jobs []extractedJob) {
 		fmt.Println("salary:", job.salary)
 		fmt.Println("summary:", job.summary+"\n")
 	}
-}
-
-func getPage(page int) []extractedJob {
-	var jobs []extractedJob
-	pageURL := baseURL + "&start=" + strconv.Itoa(page*10)
-	fmt.Println("Requesting", pageURL)
-	res, err := http.Get(pageURL)
-	checkErr(err)
-	checkCode(res)
-
-	defer res.Body.Close()
-
-	doc, err := goquery.NewDocumentFromReader(res.Body)
-
-	searchCards := doc.Find(".tapItem")
-	searchCards.Each(func(i int, card *goquery.Selection) {
-		job := extractJob(card)
-		jobs = append(jobs, job)
-	})
-	return jobs
-}
-
-func extractJob(card *goquery.Selection) extractedJob {
-	id, _ := card.Attr("data-jk")
-	title := cleanString(card.Find(".jobTitle>span").Text())
-	company := cleanString(card.Find(".companyName").Text())
-	location := cleanString(card.Find(".companyLocation").Text())
-	salary := cleanString(card.Find(".salary-snippet").Text())
-	summary := cleanString(card.Find(".job-snippet").Text())
-	return extractedJob{
-		id:       id,
-		title:    title,
-		company:  company,
-		location: location,
-		salary:   salary,
-		summary:  summary,
-	}
-}
-
-func cleanString(str string) string {
-	return strings.Join(strings.Fields(strings.TrimSpace(str)), " ")
-}
-
-func getPages() int {
-	pages := 0
-	res, err := http.Get(baseURL)
-	checkErr(err)
-	checkCode(res)
-
-	defer res.Body.Close()
-
-	doc, err := goquery.NewDocumentFromReader(res.Body)
-	checkCode(res)
-
-	doc.Find(".pagination").Each(func(i int, s *goquery.Selection) {
-		pages = s.Find("a").Length()
-	})
-
-	return pages
 }
 
 func checkErr(err error) {
