@@ -4,17 +4,58 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/PuerkitoBio/goquery"
 )
 
-var baseURL string = "https://kr.indeed.com/%EC%B7%A8%EC%97%85?q=python&l="
+type extractedJob struct {
+	id       string
+	title    string
+	location string
+	salary   string
+	summary  string
+	company  string
+}
+
+var baseURL string = "https://kr.indeed.com/%EC%B7%A8%EC%97%85?q=python"
 
 func main() {
-	getPages()
+	totalPages := getPages()
+	for i := 0; i < totalPages; i++ {
+		getPage(i)
+	}
+}
+
+func getPage(page int) {
+	pageURL := baseURL + "&start=" + strconv.Itoa(page*10)
+	fmt.Println("Requesting", pageURL)
+	res, err := http.Get(pageURL)
+	checkErr(err)
+	checkCode(res)
+
+	defer res.Body.Close()
+
+	doc, err := goquery.NewDocumentFromReader(res.Body)
+
+	searchCards := doc.Find(".tapItem")
+	searchCards.Each(func(i int, card *goquery.Selection) {
+		id, _ := card.Attr("data-jk")
+
+		title := card.Find(".jobTitle>span").Text()
+		company := card.Find(".companyName").Text()
+		location := card.Find(".companyLocation").Text()
+		summary := card.Find(".job-snippet").Text()
+		fmt.Println("id:", id)
+		fmt.Println("title:", title)
+		fmt.Println("company:", company)
+		fmt.Println("location:", location)
+		fmt.Println("summary:", summary+"\n")
+	})
 }
 
 func getPages() int {
+	pages := 0
 	res, err := http.Get(baseURL)
 	checkErr(err)
 	checkCode(res)
@@ -24,9 +65,11 @@ func getPages() int {
 	doc, err := goquery.NewDocumentFromReader(res.Body)
 	checkCode(res)
 
-	fmt.Println(doc)
+	doc.Find(".pagination").Each(func(i int, s *goquery.Selection) {
+		pages = s.Find("a").Length()
+	})
 
-	return 0
+	return pages
 }
 
 func checkErr(err error) {
