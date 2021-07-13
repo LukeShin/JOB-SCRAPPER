@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/csv"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -20,6 +22,7 @@ type extractedJob struct {
 }
 
 var baseURL string = "https://kr.indeed.com/%EC%B7%A8%EC%97%85?q=python"
+var viewURL string = "https://kr.indeed.com/%EC%B1%84%EC%9A%A9%EB%B3%B4%EA%B8%B0?jk="
 
 func main() {
 	var jobs []extractedJob
@@ -28,15 +31,38 @@ func main() {
 		extractedJobs := getPage(i)
 		jobs = append(jobs, extractedJobs...)
 	}
+	wirteJobs(jobs)
+	logJobs(jobs)
+	fmt.Println("Done, extracted", len(jobs))
+}
 
-	for idx, curJob := range jobs {
+func wirteJobs(jobs []extractedJob) {
+	file, err := os.Create("jobs.csv")
+	checkErr(err)
 
-		fmt.Println("[", idx, "]", "id:", curJob.id)
-		fmt.Println("title:", curJob.title)
-		fmt.Println("company:", curJob.company)
-		fmt.Println("location:", curJob.location)
-		fmt.Println("salary:", curJob.salary)
-		fmt.Println("summary:", curJob.summary+"\n")
+	w := csv.NewWriter(file)
+	defer w.Flush()
+
+	headers := []string{"ID", "TITLE", "COMPANY", "LOCATION", "SALARY", "SUMMARY"}
+	wErr := w.Write(headers)
+	checkErr(wErr)
+
+	for _, job := range jobs {
+		jobLink := "<a href='" + viewURL + job.id + "'>" + "</a>"
+		jobSlice := []string{jobLink, job.title, job.company, job.location, job.salary, job.summary}
+		jwErr := w.Write(jobSlice)
+		checkErr(jwErr)
+	}
+}
+
+func logJobs(jobs []extractedJob) {
+	for idx, job := range jobs {
+		fmt.Println("[", idx, "]", "id:", job.id)
+		fmt.Println("title:", job.title)
+		fmt.Println("company:", job.company)
+		fmt.Println("location:", job.location)
+		fmt.Println("salary:", job.salary)
+		fmt.Println("summary:", job.summary+"\n")
 	}
 }
 
